@@ -1,5 +1,12 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from pkg_resources import get_distribution, DistributionNotFound
+from .notebook import *
+
+__author__ = "Marco Mernberger"
+__copyright__ = "Copyright (c) 2020 Marco Mernberger"
+__license__ = "mit"
+
 
 try:
     # Change here if project is renamed and does not equal the package name
