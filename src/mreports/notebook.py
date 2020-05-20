@@ -5,8 +5,8 @@
 
 from pathlib import Path
 from typing import List
-import pypipegraph as ppg
 import nbformat as nbf
+import pypipegraph as ppg
 
 __author__ = "Marco Mernberger"
 __copyright__ = "Copyright (c) 2020 Marco Mernberger"
