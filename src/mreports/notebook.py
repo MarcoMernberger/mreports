@@ -57,7 +57,7 @@ class Cell:
         return self.__hash
 
     def __str__(self):
-        return f"Cell(celltype={self.type}, tags={self.tags})"
+        return f"Cell(text={self.text}, celltype={self.type}, tags={self.tags})"
 
 
 class NB:
@@ -77,17 +77,26 @@ class NB:
 
     def __init__(self, name: str, path_to_directory: Path = None):
         self.name = name
+        self.project_name = Path(os.environ["ANYSNAKE_PROJECT_PATH"]).name
         self.result_dir = path_to_directory
         if self.result_dir is None:
             self.result_dir = Path("out") / "notebooks"
         self.result_dir.mkdir(exist_ok=True, parents=True)
-        self.path_to_file = self.result_dir / f"{self.name}.ipynb"
+        self.path_to_file = self.result_dir / f"{self.name}_{self.project_name}.ipynb"
         self.ordered_cell_list: List[Cell] = []
         self.nb = nbf.v4.new_notebook()
         self.dependencies = [
-            ppg.FunctionInvariant(str(self.path_to_file) + "_rfunc", self.register_plot),
-            ppg.FunctionInvariant(str(self.path_to_file) + "_rtextfunc", self.register_text),
-            ppg.FunctionInvariant(str(self.path_to_file) + "_commitfunc", self.commit)
+            ppg.FunctionInvariant(
+                str(self.path_to_file) + "_rfunc", self.register_plot
+            ),
+            ppg.FunctionInvariant(
+                str(self.path_to_file) + "_rtextfunc", self.register_text
+            ),
+            ppg.FunctionInvariant(
+                str(self.path_to_file) + "_rhtmlfunc", self.register_html
+            ),
+
+            ppg.FunctionInvariant(str(self.path_to_file) + "_commitfunc", self.commit),
         ]
         self.invariant: List[str] = []
         self.colors = ["green", "blue", "orange", "red"]
@@ -115,17 +124,16 @@ from IPython.display import HTML
         self.ordered_cell_list.extend([first, second])
         self.invariant.append([first.hash, second.hash])
 
-    def register_plot(self, job: PlotJob, text: str =None):
+    def register_plot(self, job: PlotJob, text: str = None):
         tags = [self.get_color_tag()]
         if text is None:
             text = f"Result from : {job.job_id}"
         md_cell = Cell(f"#### {text}:", "markdown")
         self.ordered_cell_list.append(md_cell)
-        pre = "/".join([".."] * (len(self.result_dir.parents)))
-        filenames = [pre + "/" + f for f in job.filenames]
+        filenames = [os.path.relpath(Path(f).resolve(), self.result_dir) for f in job.filenames]
         code = f"""\
 for filename in {filenames}:
-    display(Image(filename))
+    display(Image(filename, embed=True, retina=True))
 """
         code_cell = Cell(code, "code", tags)
         self.ordered_cell_list.append(code_cell)
@@ -138,18 +146,25 @@ for filename in {filenames}:
         self.ordered_cell_list.append(md_cell)
         self.invariant.append(md_cell.hash)
 
-    def register_html(self, filename, text: str = None):
+    def register_html(self, filename: Path, job, text: str = None):
         tags = [self.get_color_tag()]
         if text is None:
             text = f"HTML from : {filename}"
         md_cell = Cell(f"#### {text}:", "markdown")
         self.ordered_cell_list.append(md_cell)
-        code = f"HTML(filename={filename})"
+        rel_filename = os.path.relpath(Path(filename).resolve(), self.result_dir)
+        code = f'HTML(filename="{rel_filename}")'
         code_cell = Cell(code, "code", tags)
         self.ordered_cell_list.append(code_cell)
         self.invariant.extend([md_cell.hash, code_cell.hash])
+        self.dependencies.extend(job)
 
-    def register_file(self, job: Union[FileGeneratingJob, MultiFileGeneratingJob], text: str, index: int = None):
+    def register_file(
+        self,
+        job: Union[FileGeneratingJob, MultiFileGeneratingJob],
+        text: str,
+        index: int = None,
+    ):
         tags = [self.get_color_tag()]
         if isinstance(job, FileGeneratingJob):
             if text is None:
@@ -169,9 +184,9 @@ for filename in {filenames}:
                 self.nb["cells"].append(
                     nbf.v4.new_code_cell(cell.text, metadata=cell.meta)
                 )
-#        self.dependencies.append(
-#            ppg.ParameterInvariant(self.name + "__hash", self.invariant)
-#        )
+        self.dependencies.append(
+            ppg.ParameterInvariant(self.name + "__hash", self.invariant)
+        )
 
     def write(self):
         def do_write():
@@ -181,12 +196,12 @@ for filename in {filenames}:
 
         return ppg.FileGeneratingJob(self.path_to_file, do_write).depends_on(
             self.dependencies
-        ).depends_on(ppg.ParameterInvariant(self.name + "__hash", self.invariant))
+        )  # .depends_on(ppg.ParameterInvariant(self.name + "__hash", self.invariant))
 
     def convert(self, to: str = "html"):
         outfile = self.path_to_file.with_suffix(f".{to}")
         errorfile = self.path_to_file.with_suffix(f".{to}.error.txt")
-        template = Path(__file__).parent / 'templates' / 'report_template.tpl'
+        template = Path(__file__).parent / "templates" / "report_template.tpl"
 
         def __run():
             cmd = [
@@ -203,4 +218,10 @@ for filename in {filenames}:
                 print(" ".join(cmd))
                 subprocess.check_call(cmd, stderr=err)
 
-        return ppg.FileGeneratingJob(outfile, __run).depends_on(self.write()).depends_on(ppg.FileInvariant(template))
+        return (
+            ppg.FileGeneratingJob(outfile, __run)
+            .depends_on(self.dependencies)
+            .depends_on(self.write())
+            .depends_on(ppg.FileInvariant(template))
+        )
+
