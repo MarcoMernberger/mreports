@@ -130,7 +130,7 @@ from IPython.display import HTML
             text = f"Result from : {job.job_id}"
         md_cell = Cell(f"#### {text}:", "markdown")
         self.ordered_cell_list.append(md_cell)
-        filenames = [os.path.relpath(Path(f).resolve(), self.result_dir) for f in job.filenames]
+        filenames = [os.path.relpath(Path(f).resolve(), self.result_dir) for f in job.filenames if f.endswith(".png")]
         code = f"""\
 for filename in {filenames}:
     display(Image(filename, embed=True, retina=True))
