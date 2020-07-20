@@ -85,7 +85,15 @@ class NB:
         self.path_to_file = self.result_dir / f"{self.name}_{self.project_name}.ipynb"
         self.ordered_cell_list: List[Cell] = []
         self.nb = nbf.v4.new_notebook()
-        self.dependencies = [
+        self.invariant: List[str] = []
+        self.colors = ["green", "blue", "orange", "red", "yellow", "cyan", "purple"]
+        self.section_index = 0
+        self._dependencies: List[Job] = []
+        self.init_first_cell()
+
+    @property
+    def dependencies(self):
+        deps = self._dependencies + [
             ppg.FunctionInvariant(
                 str(self.path_to_file) + "_rfunc", self.register_plot
             ),
@@ -98,10 +106,7 @@ class NB:
 
             ppg.FunctionInvariant(str(self.path_to_file) + "_commitfunc", self.commit),
         ]
-        self.invariant: List[str] = []
-        self.colors = ["green", "blue", "orange", "red"]
-        self.section_index = 0
-        self.init_first_cell()
+        return deps
 
     def get_color_tag(self):
         index = self.section_index % len(self.colors)

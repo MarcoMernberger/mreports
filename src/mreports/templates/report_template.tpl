@@ -18,6 +18,18 @@
     <div style="border:thin solid blue">
         {{ super() }}
     </div>
+{% elif 'yellow' in cell['metadata'].get('tags', []) %}
+    <div style="border:thin solid yellow">
+        {{ super() }}
+    </div>
+{% elif 'cyan' in cell['metadata'].get('tags', []) %}
+    <div style="border:thin solid cyan">
+        {{ super() }}
+    </div>
+{% elif 'purple' in cell['metadata'].get('tags', []) %}
+    <div style="border:thin solid purple">
+        {{ super() }}
+    </div>
 {% else %}
     {{ super() }}
 {% endif %}
