@@ -4,7 +4,7 @@
 """notebook.py: Contains different wrapper for variant caller."""
 
 from pathlib import Path
-from typing import List, Union
+from typing import List, Union, Literal
 from pypipegraph import Job, FileGeneratingJob, MultiFileGeneratingJob, PlotJob
 import nbformat as nbf
 import pypipegraph as ppg
@@ -48,8 +48,8 @@ class Cell:
         self.type = celltype
         self.tags = tags
         self.meta = {}
-        if len(tags) > 0:
-            self.meta["tags"] = tags
+        if len(self.tags) > 0:
+            self.meta["tags"] = self.tags
         self.__hash = (self.text + self.type + "".join(self.tags)).__hash__()
 
     @property
@@ -86,10 +86,24 @@ class NB:
         self.ordered_cell_list: List[Cell] = []
         self.nb = nbf.v4.new_notebook()
         self.invariant: List[str] = []
-        self.colors = ["green", "blue", "orange", "red", "yellow", "cyan", "purple"]
-        self.section_index = 0
         self._dependencies: List[Job] = []
         self.init_first_cell()
+
+    colors = {
+        0: "green",
+        1: "blue",
+        2: "orange",
+        3: "red",
+        4: "yellow",
+        5: "cyan",
+        6: "purple",
+    }
+
+    @classmethod
+    def get_color_tag(self, section_index):
+        if section_index > len(self.colors):
+            section_index = section_index % len(self.colors)
+        return self.colors[section_index]
 
     @property
     def dependencies(self):
@@ -103,80 +117,119 @@ class NB:
             ppg.FunctionInvariant(
                 str(self.path_to_file) + "_rhtmlfunc", self.register_html
             ),
-
             ppg.FunctionInvariant(str(self.path_to_file) + "_commitfunc", self.commit),
         ]
         return deps
 
-    def get_color_tag(self):
-        index = self.section_index % len(self.colors)
-        return self.colors[index]
-
-    def new_section(self):
-        self.section_index += 1
+    def __register_cell(
+        self,
+        content: str,
+        celltype: str,
+        tags: List[str] = None,
+        section_index: int = None,
+    ):
+        if tags is None:
+            tags = []
+        if section_index is not None:
+            tags.append(self.get_color_tag(section_index))
+        cell = Cell(content, celltype, tags)
+        self.ordered_cell_list.append(cell)
+        self.invariant.append(cell.hash)
 
     def init_first_cell(self):
         text = """\
 from IPython.display import Image
 from IPython.display import HTML
 """
-        first = Cell(text, celltype="code")
+        self.__register_cell(text, celltype="code")
         text = f"""\
 ## Analysis report for
-## {Path(os.environ["ANYSNAKE_PROJECT_PATH"]).name}. 
+## {Path(os.environ["ANYSNAKE_PROJECT_PATH"]).name}.
         """
-        second = Cell(text, celltype="markdown")
-        self.ordered_cell_list.extend([first, second])
-        self.invariant.append([first.hash, second.hash])
+        self.__register_cell(text, celltype="markdown")
+        text = """\
+%%html
+<style>
+    table {
+        display: inline-block
+    }
+</style>
+"""
+        self.__register_cell(text, "code")
 
-    def register_plot(self, job: PlotJob, text: str = None):
-        tags = [self.get_color_tag()]
+    def register_plot(
+        self,
+        job: PlotJob,
+        text: str = None,
+        tags: List[str] = None,
+        section_index: int = None,
+    ):
         if text is None:
             text = f"Result from : {job.job_id}"
-        md_cell = Cell(f"#### {text}:", "markdown")
-        self.ordered_cell_list.append(md_cell)
-        filenames = [os.path.relpath(Path(f).resolve(), self.result_dir) for f in job.filenames if f.endswith(".png")]
+        self.__register_cell(f"{text}:", "markdown", tags, section_index)
+        filenames = [
+            os.path.relpath(Path(f).resolve(), self.result_dir)
+            for f in job.filenames
+            if f.endswith(".png")
+        ]
         code = f"""\
 for filename in {filenames}:
     display(Image(filename, embed=True, retina=True))
 """
-        code_cell = Cell(code, "code", tags)
-        self.ordered_cell_list.append(code_cell)
-        self.invariant.extend([md_cell.hash, code_cell.hash])
+        self.__register_cell(code, "code", tags, section_index)
         self.dependencies.extend(job)
 
-    def register_text(self, text: str):
-        tags = [self.get_color_tag()]
-        md_cell = Cell(f"### **{text}**:", "markdown", tags)
-        self.ordered_cell_list.append(md_cell)
-        self.invariant.append(md_cell.hash)
+    def register_text(
+        self,
+        text: str,
+        tags: List[str] = None,
+        section_index: int = None,
+    ):
+        self.__register_cell(f"### **{text}**:", "markdown", tags, section_index)
 
-    def register_html(self, filename: Path, job, text: str = None):
-        tags = [self.get_color_tag()]
+    def register_code(
+        self,
+        text: str,
+        tags: List[str] = None,
+        section_index: int = None,
+    ):
+        self.__register_cell(text, "code", tags, section_index)
+
+    def register_markdown(
+        self,
+        text: str,
+        tags: List[str] = None,
+        section_index: int = None,
+    ):
+        self.__register_cell(text, "markdown", tags, section_index)
+
+    def register_html(
+        self,
+        filename: Path,
+        job,
+        text: str = None,
+        tags: List[str] = None,
+        section_index: int = None,
+    ):
         if text is None:
             text = f"HTML from : {filename}"
-        md_cell = Cell(f"#### {text}:", "markdown")
-        self.ordered_cell_list.append(md_cell)
+        self.__register_cell(f"#### {text}:", "markdown", tags, section_index)
         rel_filename = os.path.relpath(Path(filename).resolve(), self.result_dir)
         code = f'HTML(filename="{rel_filename}")'
-        code_cell = Cell(code, "code", tags)
-        self.ordered_cell_list.append(code_cell)
-        self.invariant.extend([md_cell.hash, code_cell.hash])
+        self.__register_cell(code, "code", tags, section_index)
         self.dependencies.extend(job)
 
     def register_file(
         self,
         job: Union[FileGeneratingJob, MultiFileGeneratingJob],
         text: str,
-        index: int = None,
+        tags: List[str] = None,
+        section_index: int = None,
     ):
-        tags = [self.get_color_tag()]
         if isinstance(job, FileGeneratingJob):
             if text is None:
                 text = f"File {job.job_id}"
-            md_cell = Cell(f"### **{text}**:", "markdown", tags)
-            self.ordered_cell_list.append(md_cell)
-            self.invariant.append(md_cell.hash)
+            self.__register_cell(f"### **{text}**:", "markdown", tags, section_index)
 
     def commit(self):
         self.nb["cells"] = []
@@ -229,4 +282,3 @@ for filename in {filenames}:
             .depends_on(self.write())
             .depends_on(ppg.FileInvariant(template))
         )
-
