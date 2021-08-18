@@ -492,7 +492,7 @@ from IPython.display import HTML
                 to,
                 "--no-input",
                 "--execute",
-                f"--template={template}",
+                # f"--template={template}",  # this is currently bugged in nbconvert
             ]
             with errorfile.open("w") as err:
                 print(" ".join(cmd))
