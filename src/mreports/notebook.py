@@ -250,7 +250,11 @@ class NB:
         self, name: str, path_to_directory: Path = None, dependencies: List[Job] = []
     ):
         self.name = name
-        self.project_name = Path(os.environ["ANYSNAKE_PROJECT_PATH"]).name
+        self.project_name = Path.cwd().name
+        if "ANYSNAKE_PROJECT_PATH" in os.environ:
+            self.project_name = Path(os.environ["ANYSNAKE_PROJECT_PATH"]).name
+        elif "ANYSNAKE2_SOURCE" in os.environ:
+            self.project_name = Path(os.environ["ANYSNAKE2_SOURCE"]).name
         self.result_dir = path_to_directory
         if self.result_dir is None:
             self.result_dir = Path("out") / "notebooks"
