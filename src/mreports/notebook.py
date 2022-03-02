@@ -354,7 +354,7 @@ from IPython.display import HTML
         cells.append(cell)
         text = f"""\
 ## Analysis report for
-## {Path(os.environ["ANYSNAKE_PROJECT_PATH"]).name}.
+## {self.project_name}.
         """
         cell = Cell(text, celltype="markdown")
         cells.append(cell)

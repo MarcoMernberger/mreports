@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-    Dummy conftest.py for mreports.
-
-    If you don't know what this is for, just leave it empty.
-    Read more about conftest.py under:
-    https://pytest.org/latest/plugins.html
+conftest.py for mreports.
 """
 
-# import pytest
+import pytest
+import pathlib
+import sys
+from pypipegraph.testing.fixtures import new_pipegraph  # noqa:F401
+
+root = pathlib.Path(".").parent.parent
+sys.path.append(str(root / "src"))
