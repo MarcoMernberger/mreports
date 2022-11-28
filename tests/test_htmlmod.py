@@ -21,9 +21,10 @@ gsea_html_file = Path("tests") / "data" / "test.html"
 
 
 def pt_modify_link(href, *args):
-    return href[:-4]
+    return str(href)[:-4]
 
 
+@pytest.mark.usefixtures("new_pipegraph_no_qc")
 def test_htmlmodifier_init():
     mod = HTMLModifier()
     assert mod.parser == "html.parser"
@@ -68,7 +69,8 @@ def test_linkmodifier_modify_soup(tmp_path):
             soup = BeautifulSoup(fp2, "html.parser")
             soup_refs = []
             modified_soup_refs = []
-            print(">>>>>>>", type(soup))
+            print(type(soup))
+            print(type(link_matched))
             mod.modify_soup(soup, link_matched)
             for link in original_soup.find_all("a"):
                 href = link.get("href")
@@ -170,7 +172,7 @@ def test_reportpathmodifier_modify_link(tmp_path):
     report_path = tmp_path / "report" / "test"
     mod = ReportPathModifier(report_path)
     href = tmp_path / "data" / "test.html"
-    modified_path = mod.modify_link(href, tmp_path / "source.html")
+    modified_path = mod.modify_link(href)  # , tmp_path / "source.html")
     assert modified_path == Path("../../data/test.html")
 
 
