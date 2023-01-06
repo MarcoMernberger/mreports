@@ -4,17 +4,34 @@
 """notebook.py: Contains different wrapper for variant caller."""
 
 from pathlib import Path
-from typing import List, Union, Literal
-from pypipegraph import Job, FileGeneratingJob, MultiFileGeneratingJob, PlotJob
+from typing import List, Union, Literal, Iterable
+from pypipegraph2 import Job, MultiFileGeneratingJob, PlotJob
 from abc import ABC, abstractmethod
 import nbformat as nbf
-import pypipegraph as ppg
+import pypipegraph2 as ppg2
 import os
 import subprocess
 
 __author__ = "Marco Mernberger"
 __copyright__ = "Copyright (c) 2020 Marco Mernberger"
 __license__ = "mit"
+
+
+def flatten(list_of_lists: Iterable) -> Iterable:
+    """
+    Flattens a nested list
+    """
+    if not hasattr(list_of_lists, "__iter__"):
+        return [list_of_lists]
+    flat = []
+    list_of_lists = list(list_of_lists)
+    while len(list_of_lists) != 0:
+        item = list_of_lists.pop(0)
+        if hasattr(item, "__iter__"):
+            flat.extend(item)
+        else:
+            flat.append(item)
+    return flat
 
 
 class Cell:
@@ -43,9 +60,7 @@ class Cell:
     def __init__(self, text: str, celltype: str = "markdown", tags: List[str] = []):
         self.text = text
         if celltype not in ["markdown", "code"]:
-            raise ValueError(
-                f"Cell type must be any of [markdown, code], was {celltype}."
-            )
+            raise ValueError(f"Cell type must be any of [markdown, code], was {celltype}.")
         self.type = celltype
         self.tags = tags
         self.meta = {}
@@ -65,7 +80,7 @@ class Item(ABC):
     """
     Abstract class for a single item added to the report notebook.
 
-    An Item might be a single plot, an html document, a markdown cell, 
+    An Item might be a single plot, an html document, a markdown cell,
     a code cell and anything thast might be added to a report.
 
     Parameters
@@ -75,7 +90,7 @@ class Item(ABC):
         section_name will be grouped together.
     section_index : int, optional
         Index of the section, used to order the sections and color the frame,
-        by default None. Sections with index None will be added last. 
+        by default None. Sections with index None will be added last.
     """
 
     def __init__(
@@ -151,18 +166,28 @@ class PlotItem(Item):
         """
         super().__init__(section, tags, color, dependencies=[job])
         self.job = job
+        if not hasattr(self.job, "__iter__"):
+            self.job = [self.job]
         self.text = text
         if text is None:
             self.text = f"Result from : {self.job.job_id}"
+        self.dependencies.extend(job)
 
     def cells(self, result_dir: str, tags: List[str] = []) -> List[Cell]:
         cells = []
         cells.append(Cell(f"{self.text}", "markdown", self.tags))
+        jobs = flatten(self.job)
+        filenames = []
+        for job in jobs:
+            print(job, type(job))
+            if isinstance(job, MultiFileGeneratingJob):
+                filenames.extend(job.files)
         filenames = [
-            os.path.relpath(Path(f).resolve(), result_dir)
-            for f in self.job.filenames
-            if f.endswith(".png")
+            os.path.relpath(Path(filename).resolve(), result_dir)
+            for filename in filenames
+            if filename.name.endswith(".png")
         ]
+        print(filenames)
         code = f"""\
 for filename in {filenames}:
     display(Image(filename, embed=True, retina=True))
@@ -192,9 +217,7 @@ class MarkdownItem(Item):
 
 
 class CodeItem(Item):
-    def __init__(
-        self, section: str, text: str, tags: List[str] = None, color: bool = True
-    ):
+    def __init__(self, section: str, text: str, tags: List[str] = None, color: bool = True):
         super().__init__(section, tags, color)
         self.text = text
 
@@ -216,6 +239,7 @@ class HTMLItem(Item):
         super().__init__(section, tags, color, dependencies=[job])
         self.text = f"#### HTML from : {filename}"
         self.filename = filename
+        self.dependencies.extend(job)
 
     def cells(self, result_dir: str, tags: List[str] = []) -> List[Cell]:
         cells = []
@@ -246,9 +270,7 @@ class NB:
         Job dependencies.
     """
 
-    def __init__(
-        self, name: str, path_to_directory: Path = None, dependencies: List[Job] = []
-    ):
+    def __init__(self, name: str, path_to_directory: Path = None, dependencies: List[Job] = []):
         self.name = name
         self.project_name = Path.cwd().name
         if "ANYSNAKE_PROJECT_PATH" in os.environ:
@@ -268,25 +290,13 @@ class NB:
         self._dependencies.extend(dependencies)
         self._dependencies.extend(
             [
-                ppg.FunctionInvariant(
-                    str(self.path_to_file) + "plot_cells", PlotItem.cells
-                ),
-                ppg.FunctionInvariant(
-                    str(self.path_to_file) + "text_cell", MarkdownItem.cells
-                ),
-                ppg.FunctionInvariant(
-                    str(self.path_to_file) + "_html_cells", HTMLItem.cells
-                ),
-                ppg.FunctionInvariant(
-                    str(self.path_to_file) + "_commitfunc", self.__commit
-                ),
-                ppg.FunctionInvariant(
-                    str(self.path_to_file) + "_register", self.register_item
-                ),
-                ppg.FunctionInvariant(
-                    str(self.path_to_file) + "_initfirst", self.init_first_cell
-                ),
-                ppg.FunctionInvariant(
+                ppg2.FunctionInvariant(str(self.path_to_file) + "plot_cells", PlotItem.cells),
+                ppg2.FunctionInvariant(str(self.path_to_file) + "text_cell", MarkdownItem.cells),
+                ppg2.FunctionInvariant(str(self.path_to_file) + "_html_cells", HTMLItem.cells),
+                ppg2.FunctionInvariant(str(self.path_to_file) + "_commitfunc", self.__commit),
+                ppg2.FunctionInvariant(str(self.path_to_file) + "_register", self.register_item),
+                ppg2.FunctionInvariant(str(self.path_to_file) + "_initfirst", self.init_first_cell),
+                ppg2.FunctionInvariant(
                     str(self.path_to_file) + "__make_ordered_list",
                     self.__make_ordered_list,
                 ),
@@ -320,11 +330,12 @@ class NB:
             self.section_order.append(item.section)
             self.sections[item.section] = []
         self.sections[item.section].append(item)
+        self.add_dependencies(item.dependencies)
 
     def add_dependencies(self, jobs: Union[Job, List[Job]]):
-        if isinstance(job, list):
+        if isinstance(jobs, list):
             self._dependencies.extend(jobs)
-        elif isinstance(job, Job):
+        elif isinstance(jobs, Job):
             self._dependencies.append(jobs)
         else:
             raise ValueError("Given job is not a Job instance or list.")
@@ -460,38 +471,33 @@ from IPython.display import HTML
         invariants = []
         for cell in ordered_cell_list:
             if cell.type == "markdown":
-                self.nb["cells"].append(
-                    nbf.v4.new_markdown_cell(cell.text, metadata=cell.meta)
-                )
+                self.nb["cells"].append(nbf.v4.new_markdown_cell(cell.text, metadata=cell.meta))
             else:
-                self.nb["cells"].append(
-                    nbf.v4.new_code_cell(cell.text, metadata=cell.meta)
-                )
+                self.nb["cells"].append(nbf.v4.new_code_cell(cell.text, metadata=cell.meta))
             invariants.append(cell.hash)
-        self.dependencies.append(
-            ppg.ParameterInvariant(self.name + "__hash", invariants)
-        )
+        self.dependencies.append(ppg2.ParameterInvariant(self.name + "__hash", invariants))
 
     def write(self):
-        def do_write():
+        path_to_file = self.path_to_file
+
+        def do_write(path_to_file):
             self.__commit()
-            with self.path_to_file.open("w") as outp:
+            with path_to_file.open("w") as outp:
                 nbf.write(self.nb, outp)
 
-        return ppg.FileGeneratingJob(self.path_to_file, do_write).depends_on(
-            self.dependencies
-        )
+        return ppg2.FileGeneratingJob(path_to_file, do_write).depends_on(self.dependencies)
 
     def convert(self, to: str = "html"):
         outfile = self.path_to_file.with_suffix(f".{to}")
         errorfile = self.path_to_file.with_suffix(f".{to}.error.txt")
         template = Path(__file__).parent / "templates" / "report_template.tpl"
+        path_to_file = self.path_to_file
 
-        def __run():
+        def __run(*_):
             cmd = [
                 "jupyter",
                 "nbconvert",
-                str(self.path_to_file),
+                str(path_to_file),
                 "--to",
                 to,
                 "--no-input",
@@ -503,8 +509,8 @@ from IPython.display import HTML
                 subprocess.check_call(cmd, stderr=err)
 
         return (
-            ppg.FileGeneratingJob(outfile, __run)
+            ppg2.FileGeneratingJob(outfile, __run)
             .depends_on(self.dependencies)
             .depends_on(self.write())
-            .depends_on(ppg.FileInvariant(template))
+            .depends_on(ppg2.FileInvariant(template))
         )

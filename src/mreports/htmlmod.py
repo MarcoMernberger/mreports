@@ -4,13 +4,13 @@
 """html.py: Contains functions to modify HTML documents. Mainly we need to
 update output HTML reference links at the moment."""
 import os
-import pypipegraph as ppg
+import pypipegraph2 as ppg2
 from abc import abstractmethod
 from bs4 import BeautifulSoup
 from bs4.formatter import Formatter
 from pathlib import Path
 from typing import Union, Callable, List, Optional
-from pypipegraph import Job
+from pypipegraph2 import Job
 
 __author__ = "Marco Mernberger"
 __copyright__ = "Copyright (c) 2020 Marco Mernberger"
@@ -43,9 +43,9 @@ class HTMLModifier:
         if filename_generator is not None:
             self.filename_generator = filename_generator
         self._dependencies = [
-            ppg.FunctionInvariant(f"{str(self)}_job", self.job),
-            ppg.FunctionInvariant(f"{str(self)}_write_html", self.write_html),
-            ppg.FunctionInvariant(f"{str(self)}_new_html", self.new_html),
+            ppg2.FunctionInvariant(f"{str(self)}_job", self.job),
+            ppg2.FunctionInvariant(f"{str(self)}_write_html", self.write_html),
+            ppg2.FunctionInvariant(f"{str(self)}_new_html", self.new_html),
         ]
 
     def __str__(self):
@@ -149,10 +149,10 @@ class LinkModifier(HTMLModifier):
         self.link_matcher = link_matcher
         self._dependencies.extend(
             [
-                ppg.FunctionInvariant(f"{str(self)}_modify_link", self.modify_link),
-                ppg.FunctionInvariant(f"{str(self)}_get_matcher", self.get_matcher),
-                ppg.FunctionInvariant(f"{str(self)}_modify_soup", self.modify_soup),
-                ppg.FunctionInvariant(f"{str(self)}_create", self.create),
+                ppg2.FunctionInvariant(f"{str(self)}_modify_link", self.modify_link),
+                ppg2.FunctionInvariant(f"{str(self)}_get_matcher", self.get_matcher),
+                ppg2.FunctionInvariant(f"{str(self)}_modify_soup", self.modify_soup),
+                ppg2.FunctionInvariant(f"{str(self)}_create", self.create),
             ]
         )
 
@@ -213,10 +213,10 @@ class LinkModifier(HTMLModifier):
         dependencies.extend(self.dependencies)
         outfile = self.filename_generator(html)
 
-        def __create():
+        def __create(outfile):
             self.create(html, outfile)
 
-        return ppg.FileGeneratingJob(outfile, __create).depends_on(dependencies)
+        return ppg2.FileGeneratingJob(outfile, __create).depends_on(dependencies)
 
     def create(self, html: Path, outfile: Path) -> None:
         """
@@ -271,7 +271,7 @@ class LinkModifier(HTMLModifier):
         for link in soup.find_all("a"):
             href = link.get("href")
             if link_matched(href):
-                new_link = self.modify_link(href)
+                new_link = str(self.modify_link(Path(href)))
                 link["href"] = new_link
         return soup
 
