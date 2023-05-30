@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import List, Union, Literal, Iterable
 from pypipegraph2 import Job, MultiFileGeneratingJob, PlotJob
 from abc import ABC, abstractmethod
+from .htmlmod import GSEAReportPathModifier
 import nbformat as nbf
 import pypipegraph2 as ppg2
 import os
@@ -164,15 +165,15 @@ class PlotItem(Item):
         List[Cell]
             List of cells to add.
         """
-        super().__init__(section, tags, color, dependencies=[job])
-        self.job = job
-        if not hasattr(self.job, "__iter__"):
-            self.job = [self.job]
+        if not hasattr(job, "__iter__"):
+            jobs = [job]
+        else:
+            jobs = job
+        super().__init__(section, tags, color, dependencies=job)
         self.text = text
         if text is None:
             self.text = f"Result from : {self.job.job_id}"
-        self.dependencies.extend(job)
-
+ 
     def cells(self, result_dir: str, tags: List[str] = []) -> List[Cell]:
         cells = []
         cells.append(Cell(f"{self.text}", "markdown", self.tags))
@@ -232,7 +233,6 @@ class HTMLItem(Item):
         section: str,
         filename: Path,
         job: Job,
-        text: str = None,
         tags: List[str] = None,
         color: bool = True,
     ):
@@ -251,6 +251,22 @@ class HTMLItem(Item):
         cells.append(cell)
         return cells
 
+
+class GSEAHTMLItem(HTMLItem):
+    def __init__(
+        self,
+        section: str,
+        filename: Path,
+        job: Job,
+        tags: List[str] = None,
+        color: bool = True,
+    ):
+        mod_job = GSEAReportPathModifier().job(filename, [job])
+        filename = self.get_filename(mod_job)
+        super().__init__(section, filename, mod_job, tags, color)
+        
+    def get_filename(self, mod_job: Job) -> Path:
+        return Path(mod_job.job_id).resolve()
 
 # deal woith hash and order
 class NB:
