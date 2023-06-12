@@ -4,7 +4,7 @@
 """notebook.py: Contains different wrapper for variant caller."""
 
 from pathlib import Path
-from typing import List, Union, Literal, Iterable
+from typing import List, Union, Optional, Iterable, Dict
 from pypipegraph2 import Job, MultiFileGeneratingJob, PlotJob
 from abc import ABC, abstractmethod
 from .htmlmod import GSEAReportPathModifier
@@ -50,7 +50,7 @@ class Cell:
     celltype : str, optional
         The type of the cell, by default "markdown". May be any of ["code", "markdown"].
     tags: List[str], optional
-        Optional list of tags for the cell.
+        Optional list of tags for the cell, defult is NOne.
 
     Raises
     ------
@@ -58,12 +58,12 @@ class Cell:
         If the specified cell type is not allowed.
     """
 
-    def __init__(self, text: str, celltype: str = "markdown", tags: List[str] = []):
+    def __init__(self, text: str, celltype: str = "markdown", tags: Optional[List[str]] = None):
         self.text = text
         if celltype not in ["markdown", "code"]:
             raise ValueError(f"Cell type must be any of [markdown, code], was {celltype}.")
         self.type = celltype
-        self.tags = tags
+        self.tags = tags if tags is not None else []
         self.meta = {}
         if len(self.tags) > 0:
             self.meta["tags"] = self.tags
@@ -97,16 +97,14 @@ class Item(ABC):
     def __init__(
         self,
         section: str,
-        tags: List[str] = None,
+        tags: Optional[List[str]] = None,
         color: bool = True,
-        dependencies: List[Job] = [],
+        dependencies: Optional[List[Job]] = None,
     ):
         """constructor"""
         self.section = section
-        self._tags = tags
-        if tags is None:
-            self._tags = []
-        self._dependencies = dependencies
+        self._tags = tags if tags is not None else []
+        self._dependencies = dependencies if dependencies is not None else []
         self.color = color
 
     @property
@@ -135,14 +133,17 @@ class Item(ABC):
         """
         pass
 
+    def __str__(self):
+        return f"Item(section={self.section}, tags={self.tags}), color={self.color})"
+
 
 class PlotItem(Item):
     def __init__(
         self,
         section: str,
         job: PlotJob,
-        text: str = None,
-        tags: List[str] = None,
+        text: Optional[str] = None,
+        tags: List[str] = [],
         color: bool = True,
     ):
         """
@@ -166,21 +167,21 @@ class PlotItem(Item):
             List of cells to add.
         """
         if not hasattr(job, "__iter__"):
-            jobs = [job]
+            self.jobs = [job]
         else:
-            jobs = job
+            self.jobs = job
         super().__init__(section, tags, color, dependencies=job)
+        self._tags = []
         self.text = text
         if text is None:
-            self.text = f"Result from : {self.job.job_id}"
- 
+            self.text = f"Result from : {self.jobs[0].job_id}"
+
     def cells(self, result_dir: str, tags: List[str] = []) -> List[Cell]:
         cells = []
         cells.append(Cell(f"{self.text}", "markdown", self.tags))
-        jobs = flatten(self.job)
         filenames = []
-        for job in jobs:
-            print(job, type(job))
+        # self.jobs = flatten(self.jobs)
+        for job in self.jobs:
             if isinstance(job, MultiFileGeneratingJob):
                 filenames.extend(job.files)
         filenames = [
@@ -188,7 +189,6 @@ class PlotItem(Item):
             for filename in filenames
             if filename.name.endswith(".png")
         ]
-        print(filenames)
         code = f"""\
 for filename in {filenames}:
     display(Image(filename, embed=True, retina=True))
@@ -196,17 +196,21 @@ for filename in {filenames}:
         cells.append(Cell(code, "code", self.tags))
         return cells
 
+    def __str__(self):
+        return f"PlotItem(section={self.section}, text={self.text}, tags={self.tags}, color={self.color}, jobs={self.jobs})"
+
 
 class MarkdownItem(Item):
     def __init__(
         self,
         section: str,
         text: str,
-        tags: List[str] = None,
+        tags: Optional[List[str]] = None,
         format: int = 0,
         color: bool = True,
     ):
         super().__init__(section, tags, color)
+        self.text = text
         if format == 1:
             self.text = f"### **{self.text}**:"
         else:
@@ -218,7 +222,7 @@ class MarkdownItem(Item):
 
 
 class CodeItem(Item):
-    def __init__(self, section: str, text: str, tags: List[str] = None, color: bool = True):
+    def __init__(self, section: str, text: str, tags: List[str] = [], color: bool = True):
         super().__init__(section, tags, color)
         self.text = text
 
@@ -233,7 +237,7 @@ class HTMLItem(Item):
         section: str,
         filename: Path,
         job: Job,
-        tags: List[str] = None,
+        tags: Optional[List[str]] = None,
         color: bool = True,
     ):
         super().__init__(section, tags, color, dependencies=[job])
@@ -258,15 +262,16 @@ class GSEAHTMLItem(HTMLItem):
         section: str,
         filename: Path,
         job: Job,
-        tags: List[str] = None,
+        tags: Optional[List[str]] = None,
         color: bool = True,
     ):
         mod_job = GSEAReportPathModifier().job(filename, [job])
         filename = self.get_filename(mod_job)
         super().__init__(section, filename, mod_job, tags, color)
-        
+
     def get_filename(self, mod_job: Job) -> Path:
         return Path(mod_job.job_id).resolve()
+
 
 # deal woith hash and order
 class NB:
@@ -286,7 +291,9 @@ class NB:
         Job dependencies.
     """
 
-    def __init__(self, name: str, path_to_directory: Path = None, dependencies: List[Job] = []):
+    def __init__(
+        self, name: str, path_to_directory: Optional[Path] = None, dependencies: List[Job] = []
+    ):
         self.name = name
         self.project_name = Path.cwd().name
         if "ANYSNAKE_PROJECT_PATH" in os.environ:
@@ -475,7 +482,6 @@ from IPython.display import HTML
         for section in self.section_order:
             for item in self.sections[section]:
                 if item.color:
-                    print("color", self.get_color_tag(section))
                     item.add_tag(self.get_color_tag(section))
                 cells = item.cells(self.result_dir)
                 ordered_list.extend(cells)
