@@ -6,6 +6,7 @@
 from pathlib import Path
 from typing import List, Union, Optional, Iterable, Dict
 from pypipegraph2 import Job, MultiFileGeneratingJob, PlotJob
+from pypipegraph2.jobs import PlotJobTuple
 from abc import ABC, abstractmethod
 from .htmlmod import GSEAReportPathModifier
 import nbformat as nbf
@@ -360,8 +361,10 @@ class NB:
             self._dependencies.extend(jobs)
         elif isinstance(jobs, Job):
             self._dependencies.append(jobs)
+        elif isinstance(jobs, PlotJobTuple):
+            self._dependencies.append(jobs.plot)
         else:
-            raise ValueError("Given job is not a Job instance or list.")
+            raise ValueError(f"Given job is not a Job instance or list, was {type(jobs)}.")
 
     # def __register_cell(
     #     self,
