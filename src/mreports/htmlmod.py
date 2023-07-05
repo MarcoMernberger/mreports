@@ -271,7 +271,7 @@ class LinkModifier(HTMLModifier):
         for link in soup.find_all("a"):
             href = link.get("href")
             if link_matched(href):
-                new_link = str(self.modify_link(Path(href)))
+                new_link = str(self.modify_link(html.parent / href))
                 link["href"] = new_link
         return soup
 
